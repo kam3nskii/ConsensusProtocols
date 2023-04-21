@@ -85,6 +85,10 @@ struct Args {
     #[clap(long, short, default_value = "123")]
     seed: u64,
 
+    /// Drop rate for messages
+    #[clap(long = "drop", short = 'd', default_value = "0.0")]
+    drop_rate: f64,
+
     /// Test to run (optional)
     #[clap(long, short)]
     test: Option<String>,
@@ -103,7 +107,7 @@ fn main() {
         server_f: &server_f,
         client_f: &client_f,
         seed: args.seed,
-        drop_rate: 0.0,
+        drop_rate: args.drop_rate,
     };
 
     let mut tests = TestSuite::new();
