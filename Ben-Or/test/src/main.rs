@@ -17,13 +17,13 @@ use dslib::test::{TestResult, TestSuite};
 
 #[derive(Serialize)]
 struct MessageInit {
-    val: u8,
+    value: u8,
 }
 
 #[derive(Copy, Clone)]
 struct TestConfig<'a> {
     node_count: u32,
-    quorum: u32,
+    faulty_count: u32,
     node_factory: &'a PyNodeFactory,
     seed: u64,
 }
@@ -44,7 +44,7 @@ fn build_system(config: &TestConfig) -> System<JsonMessage> {
     for node_id in node_ids.iter() {
         let node = config.node_factory.build(
             node_id,
-            (node_id, node_ids.clone(), config.seed, config.quorum),
+            (node_id, node_ids.clone(), config.seed, config.faulty_count),
             config.seed,
         );
         sys.add_node(rc!(refcell!(node)));
@@ -71,14 +71,14 @@ fn test_simple(config: &TestConfig) -> TestResult {
     }
     for (idx, node_value) in node_values.iter().enumerate() {
         sys.send_local(
-            JsonMessage::from("INIT", &MessageInit { val: *node_value }),
+            JsonMessage::from("INIT", &MessageInit { value: *node_value }),
             &format!("{}", idx),
         );
     }
 
     sys.step_until_no_events();
 
-    let mut result = String::from("");
+    let mut result: u8 = 0;
     for i in 0..config.node_count {
         let node_id = format!("{}", i);
         let messages = get_local_messages(&sys, &node_id);
@@ -87,13 +87,13 @@ fn test_simple(config: &TestConfig) -> TestResult {
         assume!(messages[0].tip == "RESULT", format!("Node {}: Wrong message type!", i))?;
 
         let data: Value = serde_json::from_str(&messages[0].data).unwrap();
-        let val = data["val"].as_str().unwrap().to_string();
+        let value = data["value"].as_u64().unwrap() as u8;
         if i == 0 {
-            result = val.clone();
+            result = value;
         }
         assume!(
-            val == result,
-            format!("Node {}: returned {} instead of {}", i, val, result)
+            value == result,
+            format!("Node {}: returned {} instead of {}", i, value, result)
         )?;
     }
 
@@ -118,12 +118,12 @@ struct Args {
     seed: u64,
 
     /// Nodes count
-    #[clap(long = "nodes", short = 'n', default_value = "3")]
+    #[clap(long = "nodes", short = 'n', default_value = "6")]
     node_count: u32,
 
-    /// Quorum
-    #[clap(long = "quorum", short = 'q', default_value = "2")]
-    quorum: u32,
+    /// Number of faulty nodes
+    #[clap(long = "faulty_count", short = 'f', default_value = "1")]
+    faulty_count: u32,
 
     /// Test to run (optional)
     #[clap(long, short)]
@@ -139,7 +139,7 @@ fn main() {
     let node_factory = PyNodeFactory::new(&args.impl_path, "BenOrNode");
     let config = TestConfig {
         node_count: args.node_count,
-        quorum: args.quorum,
+        faulty_count: args.faulty_count,
         node_factory: &node_factory,
         seed: args.seed,
     };
