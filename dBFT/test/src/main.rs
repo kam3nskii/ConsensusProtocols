@@ -200,20 +200,28 @@ fn main() {
     init_logger(LevelFilter::Trace);
 
     env::set_var("PYTHONPATH", format!("{}/python", args.dslib_path));
-    let node_factory = PyNodeFactory::new(&args.impl_path, "SafeBBC");
-    let config = TestConfig {
+    let node_factory_safe = PyNodeFactory::new(&args.impl_path, "SafeBBC");
+    let mut config = TestConfig {
         node_count: args.node_count,
         faulty_count: args.faulty_count,
-        node_factory: &node_factory,
+        node_factory: &node_factory_safe,
         seed: args.seed,
     };
 
     let mut tests = TestSuite::new();
 
-    tests.add("TEST SIMPLE", test_simple, config);
-    tests.add("TEST ALL ONE", test_all_one, config);
-    tests.add("TEST ALL ZERO", test_all_zero, config);
-    tests.add("TEST HALF/HALF", test_half_half, config);
+    tests.add("TEST SAFE SIMPLE", test_simple, config);
+    tests.add("TEST SAFE ALL ONE", test_all_one, config);
+    tests.add("TEST SAFE ALL ZERO", test_all_zero, config);
+    tests.add("TEST SAFE HALF/HALF", test_half_half, config);
+
+    let node_factory_psync = PyNodeFactory::new(&args.impl_path, "PsyncBBC");
+    config.node_factory = &node_factory_psync;
+
+    tests.add("TEST PSYNC SIMPLE", test_simple, config);
+    tests.add("TEST PSYNC ALL ONE", test_all_one, config);
+    tests.add("TEST PSYNC ALL ZERO", test_all_zero, config);
+    tests.add("TEST PSYNC HALF/HALF", test_half_half, config);
 
     if test.is_none() {
         tests.run();
