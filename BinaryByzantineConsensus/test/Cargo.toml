@@ -1,5 +1,5 @@
 [package]
-name = "dbft"
+name = "binary_byzantine_consensus"
 version = "1.0.0"
 edition = "2021"
 
