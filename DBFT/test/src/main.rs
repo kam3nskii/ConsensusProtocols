@@ -60,59 +60,68 @@ fn get_local_messages(sys: &System<JsonMessage>, node: &str) -> Vec<JsonMessage>
         .collect::<Vec<_>>()
 }
 
+fn check_consensus(
+    sys: &mut System<JsonMessage>,
+    nodes: &Vec<String>,
+    mut expected_result: Option<u64>,
+) -> TestResult {
+    for node in nodes.iter() {
+        let mut messages = get_local_messages(&sys, &node);
+
+        if messages.len() == 0 {
+            let res = sys.step_until_local_message(&node);
+            assume!(res.is_ok(), format!("Node {}: No messages returned!", node))?;
+            messages = get_local_messages(&sys, &node);
+        }
+
+        assume!(
+            messages.len() == 1,
+            format!("Node {}: Wrong number of messages!", node)
+        )?;
+        assume!(
+            messages[0].tip == "RESULT",
+            format!("Node {}: Wrong message type!", node)
+        )?;
+
+        let data: Value = serde_json::from_str(&messages[0].data).unwrap();
+        let value = data["value"].as_u64().unwrap();
+        if expected_result.is_none() {
+            expected_result = Some(value);
+        }
+        assume!(
+            value == expected_result.unwrap(),
+            format!(
+                "Node {}: returned {} instead of {}",
+                node,
+                value,
+                expected_result.unwrap()
+            )
+        )?;
+    }
+    Ok(true)
+}
+
+fn send_init_messages(sys: &mut System<JsonMessage>, init_values: &Vec<u64>) {
+    for (idx, init_value) in init_values.iter().enumerate() {
+        sys.send_local(
+            JsonMessage::from("INIT", &MessageInit { value: *init_value }),
+            &format!("{}", idx),
+        );
+    }
+}
+
 // TESTS -----------------------------------------------------------------------
 
-fn test_simple(config: &TestConfig) -> TestResult {
+fn test_all_same(config: &TestConfig) -> TestResult {
     let mut sys = build_system(config);
+    let nodes = sys.get_node_ids();
 
-    sys.send_local(
-        JsonMessage::from("INIT", &MessageInit { value: 42 }),
-        &format!("{}", 0),
-    );
+    let value = 42;
+    let mut init_values = Vec::new();
+    init_values.resize(nodes.len(), value);
+    send_init_messages(&mut sys, &init_values);
 
-    sys.send_local(
-        JsonMessage::from("INIT", &MessageInit { value: 69 }),
-        &format!("{}", 1),
-    );
-
-    sys.send_local(
-        JsonMessage::from("INIT", &MessageInit { value: 0 }),
-        &format!("{}", 2),
-    );
-
-    sys.send_local(
-        JsonMessage::from("INIT", &MessageInit { value: 1 }),
-        &format!("{}", 3),
-    );
-
-    sys.step_until_no_events();
-
-    // for i in 0..config.node_count {
-    //     let node_id = format!("{}", i);
-    //     let messages = get_local_messages(&sys, &node_id);
-
-    //     assume!(
-    //         messages.len() > 0,
-    //         format!("Node {}: No messages returned!", i)
-    //     )?;
-    //     assume!(
-    //         messages.len() == 1,
-    //         format!("Node {}: More than 1 message returned!", i)
-    //     )?;
-    //     assume!(
-    //         messages[0].tip == "ACCEPT",
-    //         format!("Node {}: Wrong message type!", i)
-    //     )?;
-
-    //     let data: Value = serde_json::from_str(&messages[0].data).unwrap();
-    //     let value = data["value"].as_u64().unwrap();
-    //     assume!(
-    //         value == number,
-    //         format!("Node {}: returned {} instead of {}", i, value, number)
-    //     )?;
-    // }
-
-    Ok(true)
+    check_consensus(&mut sys, &nodes, Some(value))
 }
 
 // MAIN ------------------------------------------------------------------------
@@ -161,7 +170,7 @@ fn main() {
 
     let mut tests = TestSuite::new();
 
-    tests.add("TEST SIMPLE", test_simple, config);
+    tests.add("TEST ALL SAME", test_all_same, config);
 
     if test.is_none() {
         tests.run();
