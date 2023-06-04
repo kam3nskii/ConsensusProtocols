@@ -68,7 +68,7 @@ class BenOrNode(Node):
                 self._received_votes[r] = {}
             self._received_votes[r][sender] = msg['value']
 
-            if len(self._received_votes[r].keys()) == len(self._nodes) - self._f_count + 1:
+            if len(self._received_votes[r].keys()) == 4 * self._f_count + 1:
                 value = getProposingValue(
                     self._f_count, self._received_votes[r].items())
                 broadcast(ctx, self._nodes, createMsg(
@@ -80,7 +80,7 @@ class BenOrNode(Node):
             if r not in self._received_proposes:
                 self._received_proposes[r] = {}
             self._received_proposes[r][sender] = msg['value']
-            if len(self._received_proposes[r].keys()) == len(self._nodes) - self._f_count + 1:
+            if len(self._received_proposes[r].keys()) == 4 * self._f_count + 1:
                 tmp = {'?': 0, '0': 0, '1': 0}
                 for _, val in self._received_proposes[r].items():
                     tmp[val] += 1
