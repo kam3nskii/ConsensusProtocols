@@ -73,7 +73,7 @@ def BV_Delivery(bin_values, r, value):
 
 
 class DBFT(Node):
-    def __init__(self, node_id: str, nodes: List[str], faulty_count: int):
+    def __init__(self, node_id: str, nodes: List[str], faulty_count: int, seed: int):
         self._id = node_id
         self._nodes = nodes
         self._f_count = faulty_count

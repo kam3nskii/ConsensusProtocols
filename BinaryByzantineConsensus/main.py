@@ -86,7 +86,7 @@ def validate_aux_message(values, r, bin_values, senders_by_value, min_senders_cn
 
 
 class SafeBBC(Node):
-    def __init__(self, node_id: str, nodes: List[str], faulty_count: int):
+    def __init__(self, node_id: str, nodes: List[str], faulty_count: int, seed: int):
         self._id = node_id
         self._nodes = nodes
         self._f_count = faulty_count
@@ -166,7 +166,7 @@ class SafeBBC(Node):
 
 
 class PsyncBBC(Node):
-    def __init__(self, node_id: str, nodes: List[str], faulty_count: int):
+    def __init__(self, node_id: str, nodes: List[str], faulty_count: int, seed: int):
         self._id = node_id
         self._nodes = nodes
         self._f_count = faulty_count
