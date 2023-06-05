@@ -6,44 +6,158 @@ use std::env;
 
 use dslib::pynode::{ JsonMessage, PyNodeFactory };
 use dslib::test::{ TestResult, TestSuite };
+use dslib::system::System;
 
 #[path = "../../../utils/utils.rs"]
 mod utils;
+
+// UTILS -----------------------------------------------------------------------
+
+fn check_delivery(
+    sys: &mut System<JsonMessage>,
+    nodes: &Vec<String>,
+    mut expected_result: Option<u64>
+) -> TestResult {
+    for node in nodes.iter() {
+        let messages = utils::get_local_messages(&sys, &node);
+
+        assume!(messages.len() > 0, format!("Node {}: No messages returned!", node))?;
+        assume!(messages.len() == 1, format!("Node {}: Wrong number of messages!", node))?;
+        assume!(messages[0].tip == "DELIVERY", format!("Node {}: Wrong message type!", node))?;
+
+        let data: Value = serde_json::from_str(&messages[0].data).unwrap();
+        let value = data["value"].as_u64().unwrap();
+        if expected_result.is_none() {
+            expected_result = Some(value);
+        }
+        assume!(
+            value == expected_result.unwrap(),
+            format!("Node {}: delivered {} instead of {}", node, value, expected_result.unwrap())
+        )?;
+    }
+    Ok(true)
+}
+
+fn check_not_delivery(sys: &mut System<JsonMessage>, nodes: &Vec<String>) -> TestResult {
+    for node in nodes.iter() {
+        let messages = utils::get_local_messages(&sys, &node);
+        assume!(
+            messages.len() == 0,
+            format!("Node {}: The message was returned, but it wasn't meant to be!", node)
+        )?;
+    }
+    Ok(true)
+}
 
 // TESTS -----------------------------------------------------------------------
 
 fn test_simple(config: &utils::TestConfig) -> TestResult {
     let mut sys = utils::build_system(config);
+    let nodes = sys.get_node_ids();
 
-    let bin_val: u64 = 1;
+    let bin_value: u64 = 1;
 
-    let init_cnt = config.faulty_count + 1;
-    for i in 0..init_cnt {
-        sys.send_local(
-            JsonMessage::from("INIT", &(utils::MessageInit { value: bin_val })),
-            &format!("{}", i)
-        );
+    let mut init_values = Vec::new();
+    for _ in nodes.iter() {
+        init_values.push(bin_value);
+    }
+
+    utils::send_init_messages(&mut sys, &init_values);
+
+    sys.step_until_no_events();
+
+    check_delivery(&mut sys, &nodes, Some(bin_value))
+}
+
+fn test_min_init(config: &utils::TestConfig) -> TestResult {
+    let mut sys = utils::build_system(config);
+    let nodes = sys.get_node_ids();
+
+    let bin_value: u64 = 1;
+
+    let mut init_values = Vec::new();
+    let min_init_nodes_cnt = config.faulty_count + 1;
+    for _ in 0..min_init_nodes_cnt {
+        init_values.push(bin_value);
+    }
+
+    utils::send_init_messages(&mut sys, &init_values);
+
+    sys.step_until_no_events();
+
+    check_delivery(&mut sys, &nodes, Some(bin_value))
+}
+
+fn test_not_enough_init(config: &utils::TestConfig) -> TestResult {
+    let mut sys = utils::build_system(config);
+    let nodes = sys.get_node_ids();
+
+    let bin_value: u64 = 1;
+
+    let mut init_values = Vec::new();
+    let init_nodes_cnt = config.faulty_count;
+    for _ in 0..init_nodes_cnt {
+        init_values.push(bin_value);
+    }
+
+    utils::send_init_messages(&mut sys, &init_values);
+
+    sys.step_until_no_events();
+
+    check_not_delivery(&mut sys, &nodes)
+}
+
+fn test_disconnect_after_init(config: &utils::TestConfig) -> TestResult {
+    let mut sys = utils::build_system(config);
+
+    let bin_value: u64 = 1;
+
+    let mut init_values = Vec::new();
+    let min_init_nodes_cnt = config.faulty_count + 1;
+    for _ in 0..min_init_nodes_cnt {
+        init_values.push(bin_value);
+    }
+
+    utils::send_init_messages(&mut sys, &init_values);
+    sys.step_for_duration(1.0);
+
+    let mut correct_nodes = Vec::<String>::new();
+    let mut disconnected_nodes = Vec::<String>::new();
+
+    for i in 0..config.faulty_count {
+        let node = format!("{}", i);
+        sys.disconnect_node(&node);
+        disconnected_nodes.push(node);
+    }
+    for i in config.faulty_count..config.node_count {
+        let node = format!("{}", i);
+        correct_nodes.push(node);
     }
 
     sys.step_until_no_events();
 
-    for i in 0..config.node_count {
-        let node_id = format!("{}", i);
-        let messages = utils::get_local_messages(&sys, &node_id);
+    assume!(check_not_delivery(&mut sys, &disconnected_nodes).is_ok())?;
+    check_delivery(&mut sys, &correct_nodes, Some(bin_value))
+}
 
-        assume!(messages.len() > 0, format!("Node {}: No messages returned!", i))?;
-        assume!(messages.len() == 1, format!("Node {}: More than 1 message returned!", i))?;
-        assume!(messages[0].tip == "DELIVERY", format!("Node {}: Wrong message type!", i))?;
+fn test_diff_inits(config: &utils::TestConfig) -> TestResult {
+    let mut sys = utils::build_system(config);
+    let nodes = sys.get_node_ids();
 
-        let data: Value = serde_json::from_str(&messages[0].data).unwrap();
-        let value = data["value"].as_u64().unwrap();
-        assume!(
-            value == bin_val,
-            format!("Node {}: returned {} instead of {}", i, value, bin_val)
-        )?;
+    let bin_value: u64 = 1;
+
+    let mut init_values = Vec::new();
+    let init_nodes_cnt = config.faulty_count;
+    for _ in 0..init_nodes_cnt {
+        init_values.push(bin_value);
     }
+    init_values.push((bin_value + 1) % 2);
 
-    Ok(true)
+    utils::send_init_messages(&mut sys, &init_values);
+
+    sys.step_until_no_events();
+
+    check_not_delivery(&mut sys, &nodes)
 }
 
 // MAIN ------------------------------------------------------------------------
@@ -87,6 +201,10 @@ fn main() {
 
     let mut tests = TestSuite::new();
     tests.add("TEST SIMPLE", test_simple, config);
+    tests.add("TEST MIN INIT", test_min_init, config);
+    tests.add("TEST NOT ENOUGH INIT", test_not_enough_init, config);
+    tests.add("TEST DISCONNECT AFTER INIT", test_disconnect_after_init, config);
+    tests.add("TEST DIFF INITS", test_diff_inits, config);
 
     let test = args.test.as_deref();
     if test.is_none() {
