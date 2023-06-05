@@ -22,10 +22,11 @@ def broadcast(ctx, nodes, msg):
 
 
 def decide(ctx, r, value, decided):
-    if not decided:
+    if decided is None:
         ctx.send_local(Message(MSGS.result,
                                {'value': value, 'round': r}))
-    return True
+        return r
+    return decided
 
 
 def BV_Broadcast(ctx, nodes, r, value, broadcasted):
@@ -91,7 +92,7 @@ class SafeBBC(Node):
         self._nodes = nodes
         self._f_count = faulty_count
 
-        self._decided = False
+        self._decided_round = None
         self._est = None
         self._round = 0
         self._bin_values = {}
@@ -151,8 +152,8 @@ class SafeBBC(Node):
                 if len(values) == 1:
                     self._est = values.pop()
                     if self._est == b:
-                        self._decided = decide(
-                            ctx, self._round, self._est, self._decided)
+                        self._decided_round = decide(
+                            ctx, self._round, self._est, self._decided_round)
                 else:
                     self._est = b
 
@@ -171,7 +172,7 @@ class PsyncBBC(Node):
         self._nodes = nodes
         self._f_count = faulty_count
 
-        self._decided = False
+        self._decided_round = None
         self._est = None
         self._aux = list()
         self._round = 0
@@ -288,10 +289,13 @@ class PsyncBBC(Node):
                 if len(values) == 1:
                     self._est = values.pop()
                     if self._est == b:
-                        self._decided = decide(
-                            ctx, self._round, self._est, self._decided)
+                        self._decided_round = decide(
+                            ctx, self._round, self._est, self._decided_round)
                 else:
                     self._est = b
+
+                if self._decided_round == self._round - 2:
+                    return
 
                 self._round += 1
                 BV_Broadcast(ctx, self._nodes, self._round,

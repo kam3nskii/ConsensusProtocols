@@ -124,6 +124,7 @@ fn main() {
         node_factory: &node_factory,
         byz_node_factory: None,
         seed: args.seed,
+        check_termination: false,
     };
 
     let mut tests = TestSuite::new();

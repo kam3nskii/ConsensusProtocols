@@ -21,6 +21,10 @@ fn test_simple(config: &utils::TestConfig) -> TestResult {
 
     utils::send_init_messages(&mut sys, &init_values);
 
+    if config.check_termination {
+        sys.step_until_no_events();
+    }
+
     utils::check_consensus(&mut sys, &nodes, None)
 }
 
@@ -32,6 +36,10 @@ fn test_all_one(config: &utils::TestConfig) -> TestResult {
     init_values.resize(nodes.len(), 1);
     utils::send_init_messages(&mut sys, &init_values);
 
+    if config.check_termination {
+        sys.step_until_no_events();
+    }
+
     utils::check_consensus(&mut sys, &nodes, Some(1))
 }
 
@@ -42,6 +50,10 @@ fn test_all_zero(config: &utils::TestConfig) -> TestResult {
     let mut init_values = Vec::new();
     init_values.resize(nodes.len(), 0);
     utils::send_init_messages(&mut sys, &init_values);
+
+    if config.check_termination {
+        sys.step_until_no_events();
+    }
 
     utils::check_consensus(&mut sys, &nodes, Some(0))
 }
@@ -58,6 +70,10 @@ fn test_half_half(config: &utils::TestConfig) -> TestResult {
     }
 
     utils::send_init_messages(&mut sys, &init_values);
+
+    if config.check_termination {
+        sys.step_until_no_events();
+    }
 
     utils::check_consensus(&mut sys, &nodes, None)
 }
@@ -100,6 +116,7 @@ fn main() {
         node_factory: &node_factory_safe,
         byz_node_factory: None,
         seed: args.seed,
+        check_termination: false,
     };
 
     let mut tests = TestSuite::new();
@@ -110,6 +127,7 @@ fn main() {
 
     let node_factory_psync = PyNodeFactory::new(&args.impl_path, "PsyncBBC");
     config.node_factory = &node_factory_psync;
+    config.check_termination = true;
     tests.add("TEST PSYNC SIMPLE", test_simple, config);
     tests.add("TEST PSYNC ALL ONE", test_all_one, config);
     tests.add("TEST PSYNC ALL ZERO", test_all_zero, config);

@@ -23,6 +23,7 @@ pub struct TestConfig<'a> {
     pub node_factory: &'a PyNodeFactory,
     pub byz_node_factory: Option<&'a PyNodeFactory>,
     pub seed: u64,
+    pub check_termination: bool,
 }
 
 pub fn init_logger(level: LevelFilter) {
