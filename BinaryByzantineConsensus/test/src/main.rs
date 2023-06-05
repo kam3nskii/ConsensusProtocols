@@ -98,6 +98,7 @@ fn main() {
         node_count: args.node_count,
         faulty_count: args.faulty_count,
         node_factory: &node_factory_safe,
+        byz_node_factory: None,
         seed: args.seed,
     };
 

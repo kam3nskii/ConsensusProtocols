@@ -1,53 +1,15 @@
 use assertables::assume;
 use clap::Parser;
 use log::LevelFilter;
-use serde_json::Value;
 use std::env;
 
-use dslib::pynode::{ JsonMessage, PyNodeFactory };
+use dslib::pynode::{ PyNodeFactory };
 use dslib::test::{ TestResult, TestSuite };
-use dslib::system::System;
 
 #[path = "../../../utils/utils.rs"]
 mod utils;
 
-// UTILS -----------------------------------------------------------------------
-
-fn check_delivery(
-    sys: &mut System<JsonMessage>,
-    nodes: &Vec<String>,
-    mut expected_result: Option<u64>
-) -> TestResult {
-    for node in nodes.iter() {
-        let messages = utils::get_local_messages(&sys, &node);
-
-        assume!(messages.len() > 0, format!("Node {}: No messages returned!", node))?;
-        assume!(messages.len() == 1, format!("Node {}: Wrong number of messages!", node))?;
-        assume!(messages[0].tip == "DELIVERY", format!("Node {}: Wrong message type!", node))?;
-
-        let data: Value = serde_json::from_str(&messages[0].data).unwrap();
-        let value = data["value"].as_u64().unwrap();
-        if expected_result.is_none() {
-            expected_result = Some(value);
-        }
-        assume!(
-            value == expected_result.unwrap(),
-            format!("Node {}: delivered {} instead of {}", node, value, expected_result.unwrap())
-        )?;
-    }
-    Ok(true)
-}
-
-fn check_not_delivery(sys: &mut System<JsonMessage>, nodes: &Vec<String>) -> TestResult {
-    for node in nodes.iter() {
-        let messages = utils::get_local_messages(&sys, &node);
-        assume!(
-            messages.len() == 0,
-            format!("Node {}: The message was returned, but it wasn't meant to be!", node)
-        )?;
-    }
-    Ok(true)
-}
+static DELIVERED: &str = "DELIVERY";
 
 // TESTS -----------------------------------------------------------------------
 
@@ -66,7 +28,7 @@ fn test_simple(config: &utils::TestConfig) -> TestResult {
 
     sys.step_until_no_events();
 
-    check_delivery(&mut sys, &nodes, Some(bin_value))
+    utils::check_delivery(&mut sys, DELIVERED, &nodes, Some(bin_value))
 }
 
 fn test_min_init(config: &utils::TestConfig) -> TestResult {
@@ -85,7 +47,7 @@ fn test_min_init(config: &utils::TestConfig) -> TestResult {
 
     sys.step_until_no_events();
 
-    check_delivery(&mut sys, &nodes, Some(bin_value))
+    utils::check_delivery(&mut sys, DELIVERED, &nodes, Some(bin_value))
 }
 
 fn test_not_enough_init(config: &utils::TestConfig) -> TestResult {
@@ -104,7 +66,7 @@ fn test_not_enough_init(config: &utils::TestConfig) -> TestResult {
 
     sys.step_until_no_events();
 
-    check_not_delivery(&mut sys, &nodes)
+    utils::check_not_delivery(&mut sys, &nodes)
 }
 
 fn test_disconnect_after_init(config: &utils::TestConfig) -> TestResult {
@@ -136,8 +98,8 @@ fn test_disconnect_after_init(config: &utils::TestConfig) -> TestResult {
 
     sys.step_until_no_events();
 
-    assume!(check_not_delivery(&mut sys, &disconnected_nodes).is_ok())?;
-    check_delivery(&mut sys, &correct_nodes, Some(bin_value))
+    assume!(utils::check_not_delivery(&mut sys, &disconnected_nodes).is_ok())?;
+    utils::check_delivery(&mut sys, DELIVERED, &correct_nodes, Some(bin_value))
 }
 
 fn test_diff_inits(config: &utils::TestConfig) -> TestResult {
@@ -157,7 +119,7 @@ fn test_diff_inits(config: &utils::TestConfig) -> TestResult {
 
     sys.step_until_no_events();
 
-    check_not_delivery(&mut sys, &nodes)
+    utils::check_not_delivery(&mut sys, &nodes)
 }
 
 // MAIN ------------------------------------------------------------------------
@@ -196,6 +158,7 @@ fn main() {
         node_count: args.node_count,
         faulty_count: args.faulty_count,
         node_factory: &node_factory,
+        byz_node_factory: None,
         seed: args.seed,
     };
 

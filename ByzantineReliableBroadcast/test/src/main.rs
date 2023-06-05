@@ -1,43 +1,77 @@
 use assertables::assume;
 use clap::Parser;
 use log::LevelFilter;
-use serde_json::Value;
 use std::env;
 
-use dslib::pynode::{ JsonMessage, PyNodeFactory };
+use dslib::pynode::{ PyNodeFactory };
 use dslib::test::{ TestResult, TestSuite };
 
 #[path = "../../../utils/utils.rs"]
 mod utils;
 
+static DELIVERED: &str = "ACCEPT";
+
 // TESTS -----------------------------------------------------------------------
 
 fn test_simple(config: &utils::TestConfig) -> TestResult {
     let mut sys = utils::build_system(config);
+    let nodes = sys.get_node_ids();
 
-    let number: u64 = 42;
+    let init_value: u64 = 42;
 
-    sys.send_local(
-        JsonMessage::from("INIT", &(utils::MessageInit { value: number })),
-        &format!("{}", 0)
-    );
+    let mut init_values = Vec::new();
+    init_values.push(init_value);
+    utils::send_init_messages(&mut sys, &init_values);
 
     sys.step_until_no_events();
 
-    for i in 0..config.node_count {
-        let node_id = format!("{}", i);
-        let messages = utils::get_local_messages(&sys, &node_id);
+    utils::check_delivery(&mut sys, DELIVERED, &nodes, Some(init_value))
+}
 
-        assume!(messages.len() > 0, format!("Node {}: No messages returned!", i))?;
-        assume!(messages.len() == 1, format!("Node {}: More than 1 message returned!", i))?;
-        assume!(messages[0].tip == "ACCEPT", format!("Node {}: Wrong message type!", i))?;
+fn test_disconnect_after_init(config: &utils::TestConfig) -> TestResult {
+    let mut sys = utils::build_system(config);
 
-        let data: Value = serde_json::from_str(&messages[0].data).unwrap();
-        let value = data["value"].as_u64().unwrap();
-        assume!(value == number, format!("Node {}: returned {} instead of {}", i, value, number))?;
+    let init_value: u64 = 42;
+
+    let mut init_values = Vec::new();
+    init_values.push(init_value);
+    utils::send_init_messages(&mut sys, &init_values);
+
+    sys.step_for_duration(1.0);
+
+    let mut correct_nodes = Vec::<String>::new();
+    let mut disconnected_nodes = Vec::<String>::new();
+
+    for i in 0..config.faulty_count {
+        let node = format!("{}", i);
+        sys.disconnect_node(&node);
+        disconnected_nodes.push(node);
+    }
+    for i in config.faulty_count..config.node_count {
+        let node = format!("{}", i);
+        correct_nodes.push(node);
     }
 
-    Ok(true)
+    sys.step_until_no_events();
+
+    assume!(utils::check_not_delivery(&mut sys, &disconnected_nodes).is_ok())?;
+    utils::check_delivery(&mut sys, DELIVERED, &correct_nodes, Some(init_value))
+}
+
+
+fn test_byzantine(config: &utils::TestConfig) -> TestResult {
+    let mut sys = utils::build_system_with_byz(config);
+    let nodes = sys.get_node_ids();
+
+    let init_value: u64 = 42;
+
+    let mut init_values = Vec::new();
+    init_values.push(init_value);
+    utils::send_init_messages(&mut sys, &init_values);
+
+    sys.step_until_no_events();
+
+    utils::check_not_delivery(&mut sys, &nodes)
 }
 
 // MAIN ------------------------------------------------------------------------
@@ -72,15 +106,19 @@ fn main() {
     let args = Args::parse();
 
     let node_factory = PyNodeFactory::new(&args.impl_path, "RBNode");
+    let byz_node_factory = PyNodeFactory::new(&args.impl_path, "ByzRBNode");
     let config = utils::TestConfig {
         node_count: args.node_count,
         faulty_count: args.faulty_count,
         node_factory: &node_factory,
+        byz_node_factory: Some(&byz_node_factory),
         seed: args.seed,
     };
 
     let mut tests = TestSuite::new();
     tests.add("TEST SIMPLE", test_simple, config);
+    tests.add("TEST DISCONNECT AFTER INIT", test_disconnect_after_init, config);
+    tests.add("TEST BYZANTINE", test_byzantine, config);
 
     let test = args.test.as_deref();
     if test.is_none() {

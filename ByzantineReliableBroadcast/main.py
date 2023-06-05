@@ -92,3 +92,25 @@ class RBNode(Node):
 
     def on_timer(self, timer_name: str, ctx: Context):
         pass
+
+class ByzRBNode(Node):
+    def __init__(self, node_id: str, nodes: List[str], faulty_count: int, seed: int):
+        self._id = node_id
+        self._nodes = nodes
+        self._f_count = faulty_count
+
+    def on_local_message(self, msg: Message, ctx: Context):
+        if msg.type == MSGS.initial:
+            value = msg['value']
+            for node in self._nodes[1:self._f_count + 2]:
+                ctx.send(createMsg(MSGS.initial, value), node)
+            for node in self._nodes[self._f_count + 2:]:
+                ctx.send(createMsg(MSGS.initial, value + 27), node)
+
+
+    def on_message(self, msg: Message, sender: str, ctx: Context):
+        pass
+
+
+    def on_timer(self, timer_name: str, ctx: Context):
+        pass
