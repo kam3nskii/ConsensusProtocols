@@ -209,8 +209,15 @@ class DBFT(Node):
     def _decide_proposal(self, ctx, value):
         if not self._decided_proposal:
             self._decided_proposal = True
+            proposals = []
+            for i in range(len(self._bin_decisions)):
+                if self._bin_decisions[i] == 1:
+                    proposals.append(str(self._proposals[i]))
+            proposals.sort()
+
             ctx.send_local(Message(MSGS.result,
-                                   {'value': value}))
+                                   {'value': value,
+                                    'valid_proposals': ';'.join(proposals)}))
 
     def on_local_message(self, msg: Message, ctx: Context):
         # ------------------------------------------------------------------------------
