@@ -70,10 +70,10 @@ pub fn build_system_with_byz(config: &TestConfig) -> System<JsonMessage> {
         let node;
         if node_id == "0" {
             node = config.byz_node_factory.unwrap().build(
-                node_id,
-                (node_id, node_ids.clone(), config.faulty_count, config.seed),
-                config.seed
-            );
+                    node_id,
+                    (node_id, node_ids.clone(), config.faulty_count, config.seed),
+                    config.seed
+                );
         } else {
             node = config.node_factory.build(
                 node_id,
@@ -165,4 +165,54 @@ pub fn check_not_delivery(sys: &mut System<JsonMessage>, nodes: &Vec<String>) ->
         )?;
     }
     Ok(true)
+}
+
+pub fn check_consensus_and_print_statistics(
+    sys: &mut System<JsonMessage>,
+    nodes: &Vec<String>,
+    expected_result: Option<u64>,
+    config: &TestConfig,
+    seed: u64,
+    percentage_of_ones: u64
+) -> TestResult {
+    assume!(check_consensus(sys, &nodes, expected_result).is_ok())?;
+
+    let mut rounds_cnt = Vec::new();
+
+    for node in nodes.iter() {
+        let messages = get_local_messages(&sys, &node);
+
+        let data: Value = serde_json::from_str(&messages[0].data).unwrap();
+        let round = data["round"].as_u64().unwrap();
+        rounds_cnt.push(round);
+    }
+
+    println!(
+        "stat: {} {} {} {} {}",
+        seed,
+        nodes.len(),
+        config.faulty_count,
+        (rounds_cnt.iter().sum::<u64>() as f32) / (rounds_cnt.len() as f32),
+        percentage_of_ones
+    );
+
+    Ok(true)
+}
+
+#[allow(dead_code)]
+pub fn build_system_with_custom_seed(config: &TestConfig, seed: u64) -> System<JsonMessage> {
+    let mut sys = System::with_seed(seed);
+    let mut node_ids = Vec::new();
+    for n in 0..config.node_count {
+        node_ids.push(format!("{}", n));
+    }
+    for node_id in node_ids.iter() {
+        let node = config.node_factory.build(
+            node_id,
+            (node_id, node_ids.clone(), config.faulty_count, seed),
+            seed
+        );
+        sys.add_node(rc!(refcell!(node)));
+    }
+    return sys;
 }

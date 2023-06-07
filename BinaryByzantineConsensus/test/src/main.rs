@@ -1,6 +1,9 @@
+use assertables::assume;
 use clap::Parser;
 use log::LevelFilter;
 use std::env;
+use rand::prelude::*;
+use rand_pcg::Pcg64;
 
 use dslib::pynode::{ PyNodeFactory };
 use dslib::test::{ TestResult, TestSuite };
@@ -78,6 +81,50 @@ fn test_half_half(config: &utils::TestConfig) -> TestResult {
     utils::check_consensus(&mut sys, &nodes, None)
 }
 
+fn test_print_stat(config: &utils::TestConfig) -> TestResult {
+    let mut percentages = Vec::<u64>::new();
+    percentages.push(25);
+    percentages.push(50);
+    percentages.push(75);
+
+    for seed in 1..=1000 {
+        for percentage_of_ones in percentages.iter() {
+            let mut sys = utils::build_system_with_custom_seed(config, seed);
+            let nodes = sys.get_node_ids();
+
+            sys.set_delays(1.0, 5.0);
+
+            let mut init_values = Vec::new();
+            init_values.resize(nodes.len(), 0);
+
+            for i in 0..nodes.len() {
+                if (i as f32) / (nodes.len() as f32) > (*percentage_of_ones as f32) / 100.0 {
+                    break;
+                }
+                init_values[i] = 1;
+            }
+
+            let mut rand = Pcg64::seed_from_u64(seed);
+            init_values.shuffle(&mut rand);
+
+            utils::send_init_messages(&mut sys, &init_values);
+
+            if config.check_termination {
+                sys.step_until_no_events();
+            }
+
+            assume!(
+                utils::check_consensus_and_print_statistics(
+                        &mut sys, &nodes, None,
+                        config, seed, *percentage_of_ones
+                    ).is_ok()
+            )?;
+        }
+    }
+
+    Ok(true)
+}
+
 // MAIN ------------------------------------------------------------------------
 
 #[derive(Parser, Debug)]
@@ -105,7 +152,6 @@ struct Args {
 }
 
 fn main() {
-    utils::init_logger(LevelFilter::Trace);
     env::set_var("PYTHONPATH", "../../dslib/python");
     let args = Args::parse();
 
@@ -135,8 +181,18 @@ fn main() {
 
     let test = args.test.as_deref();
     if test.is_none() {
+        utils::init_logger(LevelFilter::Trace);
         tests.run();
     } else {
-        tests.run_test(test.unwrap());
+        if test.unwrap() == "TEST PSYNC PRINT STAT" {
+            utils::init_logger(LevelFilter::Debug);
+            config.node_count = 64;
+            config.faulty_count = 21;
+            tests.add(test.unwrap(), test_print_stat, config);
+            tests.run_test(test.unwrap());
+        } else {
+            utils::init_logger(LevelFilter::Trace);
+            tests.run_test(test.unwrap());
+        }
     }
 }
