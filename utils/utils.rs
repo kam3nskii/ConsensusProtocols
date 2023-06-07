@@ -167,6 +167,7 @@ pub fn check_not_delivery(sys: &mut System<JsonMessage>, nodes: &Vec<String>) ->
     Ok(true)
 }
 
+#[allow(dead_code)]
 pub fn check_consensus_and_print_statistics(
     sys: &mut System<JsonMessage>,
     nodes: &Vec<String>,

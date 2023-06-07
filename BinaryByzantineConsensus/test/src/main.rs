@@ -81,6 +81,43 @@ fn test_half_half(config: &utils::TestConfig) -> TestResult {
     utils::check_consensus(&mut sys, &nodes, None)
 }
 
+fn test_disconnect_after_init(config: &utils::TestConfig) -> TestResult {
+    let mut sys = utils::build_system(config);
+    let nodes = sys.get_node_ids();
+
+    let mut init_values = Vec::new();
+    init_values.resize(nodes.len(), 1);
+    let tmp = nodes.len() * 3 / 4;
+    for i in 0..tmp {
+        init_values[i] = 0;
+    }
+    let mut rand = Pcg64::seed_from_u64(config.seed);
+    init_values.shuffle(&mut rand);
+
+    utils::send_init_messages(&mut sys, &init_values);
+    sys.step_for_duration(1.0);
+
+    let mut correct_nodes = Vec::<String>::new();
+    let mut disconnected_nodes = Vec::<String>::new();
+
+    for i in 0..config.faulty_count {
+        let node = format!("{}", i);
+        sys.disconnect_node(&node);
+        disconnected_nodes.push(node);
+    }
+    for i in config.faulty_count..config.node_count {
+        let node = format!("{}", i);
+        correct_nodes.push(node);
+    }
+
+    if config.check_termination {
+        sys.step_until_no_events();
+    }
+
+    assume!(utils::check_not_delivery(&mut sys, &disconnected_nodes).is_ok())?;
+    utils::check_consensus(&mut sys, &correct_nodes, None)
+}
+
 fn test_print_stat(config: &utils::TestConfig) -> TestResult {
     let mut percentages = Vec::<u64>::new();
     percentages.push(25);
@@ -170,6 +207,7 @@ fn main() {
     tests.add("TEST SAFE ALL ONE", test_all_one, config);
     tests.add("TEST SAFE ALL ZERO", test_all_zero, config);
     tests.add("TEST SAFE HALF/HALF", test_half_half, config);
+    tests.add("TEST SAFE FAULTY", test_disconnect_after_init, config);
 
     let node_factory_psync = PyNodeFactory::new(&args.impl_path, "PsyncBBC");
     config.node_factory = &node_factory_psync;
@@ -178,6 +216,7 @@ fn main() {
     tests.add("TEST PSYNC ALL ONE", test_all_one, config);
     tests.add("TEST PSYNC ALL ZERO", test_all_zero, config);
     tests.add("TEST PSYNC HALF/HALF", test_half_half, config);
+    tests.add("TEST PSYNC FAULTY", test_disconnect_after_init, config);
 
     let test = args.test.as_deref();
     if test.is_none() {
